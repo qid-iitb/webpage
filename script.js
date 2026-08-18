@@ -9,12 +9,23 @@ const CURRENT_YEAR = new Date().getFullYear();
 const csvUrl = (tab) =>
   `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`;
 
-const icon = {
-  email: "✉",
-  scholar: "◎",
-  orcid: "iD",
-  home: "↗",
-};
+function profileIcon(type) {
+  const attributes = 'class="person-icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"';
+
+  if (type === "email") {
+    return `<svg ${attributes}><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m3 7 9 6 9-6"></path></svg>`;
+  }
+
+  if (type === "scholar") {
+    return `<svg ${attributes}><path d="m4.5 7.6L12 4l7.5 3.6L12 11 4.5 7.6Z" fill="currentColor" stroke="none"></path><path d="M7.5 8.8v2.3c2.2 1.6 6.8 1.6 9 0V8.8" fill="none"></path><path d="M19.5 7.6v3.7" fill="none"></path><text x="7.2" y="20" fill="currentColor" stroke="none" font-family="Arial, sans-serif" font-size="12.5" font-weight="700">g</text></svg>`;
+  }
+
+  if (type === "orcid") {
+    return '<span class="person-icon-orcid" aria-hidden="true">iD</span>';
+  }
+
+  return `<svg ${attributes}><circle cx="12" cy="12" r="8"></circle><path d="M4 12h16M12 4a12 12 0 0 1 0 16M12 4a12 12 0 0 0 0 16"></path></svg>`;
+}
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (character) => {
@@ -171,21 +182,132 @@ function simpleLink(url, label) {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Shared horizontal card carousels                                           */
+/* -------------------------------------------------------------------------- */
+
+function contentCarouselMarkup(cards, label, className = "") {
+  const safeLabel = escapeHtml(label);
+
+  return `
+    <div class="content-carousel${className ? ` ${className}` : ""}" data-content-carousel>
+      <button
+        class="content-carousel-button content-carousel-button--previous"
+        type="button"
+        data-content-direction="-1"
+        aria-label="Scroll ${safeLabel} left"
+      >
+        <span aria-hidden="true">←</span>
+      </button>
+      <div class="content-carousel-track" tabindex="0" role="region" aria-label="${safeLabel}">
+        ${cards.map((card) => `<div class="content-carousel-item">${card}</div>`).join("")}
+      </div>
+      <button
+        class="content-carousel-button content-carousel-button--next"
+        type="button"
+        data-content-direction="1"
+        aria-label="Scroll ${safeLabel} right"
+      >
+        <span aria-hidden="true">→</span>
+      </button>
+    </div>
+  `;
+}
+
+function initialiseContentCarousels(scope) {
+  if (!scope) return;
+
+  scope.querySelectorAll("[data-content-carousel]").forEach((carousel) => {
+    if (carousel.dataset.contentCarouselReady === "true") return;
+
+    const track = carousel.querySelector(".content-carousel-track");
+    if (!track) return;
+
+    const updateControls = () => updateContentCarouselControls(carousel);
+    track.addEventListener("scroll", updateControls, { passive: true });
+    track.querySelectorAll("img").forEach((image) => image.addEventListener("load", updateControls, { once: true }));
+    window.addEventListener("resize", updateControls);
+    carousel.dataset.contentCarouselReady = "true";
+    updateControls();
+  });
+
+  scope.querySelectorAll("details").forEach((details) => {
+    if (details.dataset.contentCarouselReady === "true") return;
+
+    details.addEventListener("toggle", () => {
+      if (!details.open) return;
+      details.querySelectorAll("[data-content-carousel]").forEach(updateContentCarouselControls);
+    });
+    details.dataset.contentCarouselReady = "true";
+  });
+
+  if (scope.dataset.contentCarouselListeners === "true") return;
+
+  scope.addEventListener("click", (clickEvent) => {
+    const button = clickEvent.target.closest("[data-content-direction]");
+    if (!button) return;
+
+    const carousel = button.closest("[data-content-carousel]");
+    const track = carousel?.querySelector(".content-carousel-track");
+    if (!track) return;
+
+    scrollContentCarousel(track, Number(button.dataset.contentDirection));
+  });
+
+  scope.addEventListener("keydown", (keyEvent) => {
+    const track = keyEvent.target.closest(".content-carousel-track");
+    if (!track) return;
+
+    if (keyEvent.key === "ArrowLeft" || keyEvent.key === "ArrowRight") {
+      keyEvent.preventDefault();
+      scrollContentCarousel(track, keyEvent.key === "ArrowLeft" ? -1 : 1);
+    }
+
+    if (keyEvent.key === "Home" || keyEvent.key === "End") {
+      keyEvent.preventDefault();
+      track.scrollTo({
+        left: keyEvent.key === "Home" ? 0 : track.scrollWidth,
+        behavior: preferredMotion() ? "smooth" : "auto",
+      });
+    }
+  });
+
+  scope.dataset.contentCarouselListeners = "true";
+}
+
+function scrollContentCarousel(track, direction) {
+  track.scrollBy({
+    left: direction * Math.max(track.clientWidth * 0.8, 300),
+    behavior: preferredMotion() ? "smooth" : "auto",
+  });
+}
+
+function updateContentCarouselControls(carousel) {
+  const track = carousel.querySelector(".content-carousel-track");
+  if (!track) return;
+
+  const canScroll = track.scrollWidth > track.clientWidth + 4;
+  carousel.dataset.canScroll = String(canScroll);
+  carousel.querySelector(".content-carousel-button--previous").disabled = !canScroll || track.scrollLeft <= 4;
+  carousel.querySelector(".content-carousel-button--next").disabled =
+    !canScroll || track.scrollLeft + track.clientWidth >= track.scrollWidth - 4;
+}
+
+/* -------------------------------------------------------------------------- */
 /* People                                                                     */
 /* -------------------------------------------------------------------------- */
 
-function memberCard(person, isPastMember = false) {
+function memberCard(person, { isPastMember = false, roleLabel = "" } = {}) {
   const photo = driveImageUrl(person["Image URL"]);
   const links = [
-    ["Email", "email", person.Email ? `mailto:${person.Email}` : ""],
-    ["Google Scholar", "scholar", person["Google Scholar"]],
-    ["ORCID", "orcid", person.ORCID],
-    ["Personal Homepage", "home", person["Personal Homepage"]],
+    [`Email ${person.Name}`, "email", person.Email ? `mailto:${person.Email}` : ""],
+    [`${person.Name} on Google Scholar`, "scholar", person["Google Scholar"]],
+    [`${person.Name} on ORCID`, "orcid", person.ORCID],
+    [`${person.Name}'s personal homepage`, "home", person["Personal Homepage"]],
   ]
     .filter(([, , url]) => url)
     .map(([label, type, url]) => {
       const newTab = type === "email" ? "" : ' target="_blank" rel="noopener"';
-      return `<a class="person-icon" href="${escapeHtml(url)}"${newTab} aria-label="${label}" title="${label}">${icon[type]}</a>`;
+      return `<a class="person-icon person-icon--${type}" href="${escapeHtml(url)}"${newTab} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${profileIcon(type)}</a>`;
     })
     .join("");
 
@@ -215,7 +337,7 @@ function memberCard(person, isPastMember = false) {
         }
       </div>
       <h3>${escapeHtml(person.Name)}</h3>
-      <div class="role">${escapeHtml(person.Role || person["Member Type"])}</div>
+      <div class="role">${escapeHtml(roleLabel || person.Role || person["Member Type"])}</div>
       ${person["Research interests"] ? `<p class="interests">${escapeHtml(person["Research interests"])}</p>` : ""}
       ${isPastMember && pastDetails ? `<p class="member-history">${pastDetails}</p>` : ""}
       ${
@@ -226,6 +348,30 @@ function memberCard(person, isPastMember = false) {
       ${links ? `<div class="person-links">${links}</div>` : ""}
     </article>
   `;
+}
+
+const PAST_MEMBER_TYPES = [
+  {
+    label: "Postdoctoral Fellow",
+    aliases: [
+      "postdoctoral fellow",
+      "postdoctoral fellows",
+      "postdoctoral researcher",
+      "postdoctoral researchers",
+      "postdoc",
+      "postdocs",
+    ],
+  },
+  { label: "PhD Student", aliases: ["phd student", "phd students"] },
+  { label: "Project Student", aliases: ["project student", "project students"] },
+  { label: "Other Member", aliases: ["other member", "other members"] },
+];
+
+function canonicalPastMemberType(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  return PAST_MEMBER_TYPES.find((group) => group.aliases.includes(normalized))?.label || "Other Member";
 }
 
 async function renderPeople() {
@@ -261,29 +407,28 @@ async function renderPeople() {
     const pastMembers = (await readSheet("Past Members", "Member Type")).filter((person) =>
       isYes(person.Display),
     );
-    const memberTypes = [
-      "Postdoctoral researchers",
-      "PhD students",
-      "Project students",
-      "Other members",
-    ];
-
-    pastTarget.innerHTML = memberTypes
+    pastTarget.innerHTML = PAST_MEMBER_TYPES
       .map((memberType) => {
         const people = sortByOrder(
-          pastMembers.filter((person) => (person["Member Type"] || "Other members") === memberType),
+          pastMembers.filter((person) => canonicalPastMemberType(person["Member Type"]) === memberType.label),
         );
 
         return people.length
           ? `
               <details class="member-group">
-                <summary>${memberType}<span>${people.length}</span></summary>
-                <div class="people-grid past-grid">${people.map((person) => memberCard(person, true)).join("")}</div>
+                <summary>${memberType.label}<span>${people.length}</span></summary>
+                ${contentCarouselMarkup(
+                  people.map((person) => memberCard(person, { isPastMember: true, roleLabel: memberType.label })),
+                  `${memberType.label} past members`,
+                  "past-members-carousel",
+                )}
               </details>
             `
           : "";
       })
       .join("") || '<p class="muted">Past members will be listed here.</p>';
+
+    initialiseContentCarousels(pastTarget);
   } catch {
     pastTarget.innerHTML = '<p class="muted">Past members will be listed here.</p>';
   }
@@ -835,11 +980,17 @@ async function renderConferences() {
       return `
         <details class="conference-year"${shouldOpen ? " open" : ""}>
           <summary><span>${escapeHtml(year)}</span><span>${yearVisits.length}</span></summary>
-          <div class="conference-year-grid">${yearVisits.map(conferenceCard).join("")}</div>
+          ${contentCarouselMarkup(
+            yearVisits.map(conferenceCard),
+            `Conference visits in ${year}`,
+            "conference-year-carousel",
+          )}
         </details>
       `;
     })
     .join("");
+
+  initialiseContentCarousels(target);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -855,22 +1006,25 @@ async function renderAnnouncements() {
       (await readSheet("Announcements", "Link URL")).filter(
         (announcement) => isYes(announcement.Display) && announcement.Title,
       ),
-    ).slice(0, 3);
+    );
 
     if (!announcements.length) return;
 
-    target.innerHTML = announcements
-      .map(
+    target.innerHTML = contentCarouselMarkup(
+      announcements.map(
         (announcement) => `
-          <article>
+          <article class="announcement-card">
             <time>${escapeHtml(formatDate(announcement.Date))}</time>
             <h3>${escapeHtml(announcement.Title)}</h3>
             ${announcement.Summary ? `<p>${escapeHtml(announcement.Summary)}</p>` : ""}
             ${simpleLink(announcement["Link URL"], announcement["Link label"] || "Learn more")}
           </article>
         `,
-      )
-      .join("");
+      ),
+      "Group announcements",
+      "announcements-carousel",
+    );
+    initialiseContentCarousels(target);
   } catch {
     // The static fallback in index.html remains visible.
   }
@@ -896,7 +1050,7 @@ function publicationMarkup(publication) {
 
 function highlightedPublicationMarkup(publication) {
   return `
-    <article>
+    <article class="highlighted-paper-card">
       <span>Selected paper</span>
       <h3>${escapeHtml(publication.Title)}</h3>
       <p>${escapeHtml(publication.Venue || publication["arXiv ID"] || "")}</p>
@@ -908,6 +1062,7 @@ function highlightedPublicationMarkup(publication) {
 async function renderPublications() {
   const listTarget = document.querySelector("#publication-list");
   const highlightsTarget = document.querySelector("#highlighted-papers");
+  const selectedSection = document.querySelector("#selected-publications");
   const updatedTarget = document.querySelector("#publication-updated");
   if (!listTarget) return;
 
@@ -915,8 +1070,8 @@ async function renderPublications() {
   try {
     allPublications = await readSheet("Publications", "Title");
   } catch {
-    listTarget.innerHTML = '<p class="muted">Group publications will be listed here.</p>';
-    highlightsTarget?.remove();
+    listTarget.innerHTML = '<p class="muted">Publications will be listed here.</p>';
+    selectedSection?.setAttribute("hidden", "");
     return;
   }
 
@@ -931,18 +1086,24 @@ async function renderPublications() {
     });
 
   if (!publications.length) {
-    listTarget.innerHTML = '<p class="muted">Group publications will be listed here.</p>';
-    highlightsTarget?.remove();
+    listTarget.innerHTML = '<p class="muted">Publications will be listed here.</p>';
+    selectedSection?.setAttribute("hidden", "");
     return;
   }
 
   listTarget.innerHTML = publications.map(publicationMarkup).join("");
 
-  const highlights = publications.filter((publication) => isYes(publication.Highlight)).slice(0, 3);
+  const highlights = publications.filter((publication) => isYes(publication.Highlight));
   if (highlightsTarget && highlights.length) {
-    highlightsTarget.innerHTML = highlights.map(highlightedPublicationMarkup).join("");
+    selectedSection?.removeAttribute("hidden");
+    highlightsTarget.innerHTML = contentCarouselMarkup(
+      highlights.map(highlightedPublicationMarkup),
+      "Selected papers",
+      "selected-papers-carousel",
+    );
+    initialiseContentCarousels(highlightsTarget);
   } else {
-    highlightsTarget?.remove();
+    selectedSection?.setAttribute("hidden", "");
   }
 
   const lastUpdated = publications.find((publication) => publication["Last Updated"])?.["Last Updated"];
