@@ -20,9 +20,7 @@ Pages.
 
 ## Editing website content
 
-Most content comes from published tabs in the connected Google Sheet. Use the exact column
-names in `outputs/CONTENT_WORKFLOW.md`, or import the workbook in
-`outputs/quantum-dynamics-content-template.xlsx` into Google Sheets. Set `Display` to `Yes`
+Most content comes from published tabs in the connected Google Sheet. Set `Display` to `Yes`
 for any row that should be visible on the website.
 
 The conference page automatically groups records by the year in `Date`. The current calendar
