@@ -444,43 +444,250 @@ async function renderResearch() {
 /* -------------------------------------------------------------------------- */
 
 async function renderActivities() {
-  const target = document.querySelector("#activity-gallery");
+  const target = document.querySelector("#activity-events");
   if (!target) return;
 
-  let activities = [];
+  let events = [];
   try {
-    activities = await readSheet("Activity Images", "Image URL");
+    const [eventRows, imageRows] = await Promise.all([
+      readSheet("Activity Events", "Event ID"),
+      readSheet("Activity Images", "Image URL"),
+    ]);
+    events = activityEventsFromSheets(eventRows, imageRows);
   } catch {
     try {
-      activities = await readSheet("Activities", "Image URL");
+      events = activityEventsFromFlatRows(await readSheet("Activity Images", "Image URL"));
     } catch {
-      activities = [];
+      try {
+        events = activityEventsFromFlatRows(await readSheet("Activities", "Image URL"));
+      } catch {
+        events = [];
+      }
     }
   }
 
-  const visibleActivities = sortByNewestDate(activities.filter((activity) => isYes(activity.Display)));
-  if (!visibleActivities.length) return;
+  const visibleEvents = sortActivityEvents(events.filter((event) => event.images.length));
+  if (!visibleEvents.length) return;
 
-  target.innerHTML = visibleActivities
-    .map((activity) => {
-      const image = driveImageUrl(activity["Image URL"]);
-      return `
-        <article class="activity-card">
-          ${
-            image
-              ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(activity["Image Alt"] || activity.Title)}">`
-              : '<div class="activity-placeholder">Image to be added</div>'
-          }
-          <div>
-            <time>${escapeHtml(formatDate(activity.Date))}</time>
-            <h2>${escapeHtml(activity.Title)}</h2>
-            ${activity.Summary ? `<p>${escapeHtml(activity.Summary)}</p>` : ""}
-            ${externalLink(activity["Album URL"], "View album")}
-          </div>
-        </article>
-      `;
-    })
+  const highlightedEvent = visibleEvents.find((event) => isYes(event.highlight));
+  const initiallyOpenEventId = highlightedEvent?.id || visibleEvents[0].id;
+
+  target.innerHTML = visibleEvents
+    .map((event) => activityEventMarkup(event, event.id === initiallyOpenEventId))
     .join("");
+
+  initialiseActivityCarousels(target);
+}
+
+function activityEventsFromSheets(eventRows, imageRows) {
+  const imagesByEvent = new Map();
+
+  imageRows.filter((image) => isYes(image.Display)).forEach((image) => {
+    const eventId = image["Event ID"];
+    if (!eventId) return;
+
+    const images = imagesByEvent.get(eventId) || [];
+    images.push({
+      url: image["Image URL"],
+      alt: image["Image Alt"],
+      Order: image["Image Order"],
+    });
+    imagesByEvent.set(eventId, images);
+  });
+
+  return eventRows
+    .filter((event) => isYes(event.Display))
+    .map((event) => ({
+      id: event["Event ID"],
+      title: event["Event Name"] || "Group activity",
+      date: event["Event Date"],
+      highlight: event.Highlight,
+      summary: event.Summary,
+      albumUrl: event["Album URL"],
+      images: sortByOrder(imagesByEvent.get(event["Event ID"]) || []),
+    }));
+}
+
+function activityEventsFromFlatRows(rows) {
+  const events = new Map();
+
+  rows.filter((activity) => isYes(activity.Display)).forEach((activity) => {
+    const title = activity["Event Name"] || activity.Title || "Group activity";
+    const date = activity["Event Date"] || activity.Date || activity["Image Created"] || "";
+    const id = activity["Event ID"] || activity["Album URL"] || `${title}::${date}`;
+    const event =
+      events.get(id) ||
+      {
+        id,
+        title,
+        date,
+        highlight: activity.Highlight,
+        summary: activity.Summary,
+        albumUrl: activity["Album URL"],
+        images: [],
+      };
+
+    event.images.push({
+      url: activity["Image URL"],
+      alt: activity["Image Alt"],
+      Order: activity["Image Order"] || activity.Order,
+    });
+    events.set(id, event);
+  });
+
+  return [...events.values()].map((event) => ({
+    ...event,
+    images: sortByOrder(event.images),
+  }));
+}
+
+function sortActivityEvents(events) {
+  return [...events].sort((left, right) => {
+    const leftDate = new Date(left.date).valueOf();
+    const rightDate = new Date(right.date).valueOf();
+    const dateDifference = (Number.isNaN(rightDate) ? 0 : rightDate) - (Number.isNaN(leftDate) ? 0 : leftDate);
+    return dateDifference || left.title.localeCompare(right.title);
+  });
+}
+
+function activityEventMarkup(event, isOpen) {
+  const title = escapeHtml(event.title);
+  const photoCount = event.images.length;
+  const photoLabel = `${photoCount} ${photoCount === 1 ? "photo" : "photos"}`;
+  const date = formatDate(event.date);
+  const dateMarkup = date
+    ? `<time datetime="${escapeHtml(event.date)}">${escapeHtml(date)}</time>`
+    : "";
+
+  return `
+    <details class="activity-event${isYes(event.highlight) ? " activity-event--highlighted" : ""}"${
+      isOpen ? " open" : ""
+    }>
+      <summary class="activity-event-summary">
+        <span class="activity-event-heading">
+          ${dateMarkup ? `<span class="activity-event-date">${dateMarkup}</span>` : ""}
+          <span class="activity-event-title">${title}</span>
+        </span>
+        <span class="activity-event-count">${photoLabel}</span>
+      </summary>
+      <div class="activity-event-content">
+        ${event.summary ? `<p class="activity-event-description">${escapeHtml(event.summary)}</p>` : ""}
+        <div class="activity-carousel" data-activity-carousel>
+          <button
+            class="activity-carousel-button activity-carousel-button--previous"
+            type="button"
+            data-activity-direction="-1"
+            aria-label="Scroll ${title} photos left"
+          >
+            <span aria-hidden="true">←</span>
+          </button>
+          <div
+            class="activity-carousel-track"
+            tabindex="0"
+            role="region"
+            aria-label="Photos from ${title}"
+          >
+            ${event.images.map((image, index) => activitySlideMarkup(image, event.title, index)).join("")}
+          </div>
+          <button
+            class="activity-carousel-button activity-carousel-button--next"
+            type="button"
+            data-activity-direction="1"
+            aria-label="Scroll ${title} photos right"
+          >
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
+        ${externalLink(event.albumUrl, "Open event folder", "activity-album-link")}
+      </div>
+    </details>
+  `;
+}
+
+function activitySlideMarkup(image, eventTitle, index) {
+  const source = driveImageUrl(image.url);
+  const alt = image.alt || `${eventTitle} — photo ${index + 1}`;
+
+  return `
+    <figure class="activity-slide">
+      ${
+        source
+          ? `<img src="${escapeHtml(source)}" alt="${escapeHtml(alt)}" loading="lazy">`
+          : '<div class="activity-placeholder">Image to be added</div>'
+      }
+    </figure>
+  `;
+}
+
+function initialiseActivityCarousels(target) {
+  target.querySelectorAll("[data-activity-carousel]").forEach((carousel) => {
+    const track = carousel.querySelector(".activity-carousel-track");
+    if (!track) return;
+
+    const updateControls = () => updateActivityCarouselControls(carousel);
+    track.addEventListener("scroll", updateControls, { passive: true });
+    track.querySelectorAll("img").forEach((image) => image.addEventListener("load", updateControls, { once: true }));
+    updateControls();
+  });
+
+  target.querySelectorAll(".activity-event").forEach((event) => {
+    event.addEventListener("toggle", () => {
+      if (!event.open) return;
+      event.querySelectorAll("[data-activity-carousel]").forEach(updateActivityCarouselControls);
+    });
+  });
+
+  target.addEventListener("click", (clickEvent) => {
+    const button = clickEvent.target.closest("[data-activity-direction]");
+    if (!button) return;
+
+    const carousel = button.closest("[data-activity-carousel]");
+    const track = carousel?.querySelector(".activity-carousel-track");
+    if (!track) return;
+
+    const direction = Number(button.dataset.activityDirection);
+    scrollActivityCarousel(track, direction);
+  });
+
+  target.addEventListener("keydown", (keyEvent) => {
+    const track = keyEvent.target.closest(".activity-carousel-track");
+    if (!track) return;
+
+    if (keyEvent.key === "ArrowLeft" || keyEvent.key === "ArrowRight") {
+      keyEvent.preventDefault();
+      scrollActivityCarousel(track, keyEvent.key === "ArrowLeft" ? -1 : 1);
+    }
+
+    if (keyEvent.key === "Home" || keyEvent.key === "End") {
+      keyEvent.preventDefault();
+      track.scrollTo({
+        left: keyEvent.key === "Home" ? 0 : track.scrollWidth,
+        behavior: preferredMotion() ? "smooth" : "auto",
+      });
+    }
+  });
+}
+
+function scrollActivityCarousel(track, direction) {
+  track.scrollBy({
+    left: direction * Math.max(track.clientWidth * 0.8, 300),
+    behavior: preferredMotion() ? "smooth" : "auto",
+  });
+}
+
+function updateActivityCarouselControls(carousel) {
+  const track = carousel.querySelector(".activity-carousel-track");
+  if (!track) return;
+
+  const canScroll = track.scrollWidth > track.clientWidth + 4;
+  carousel.dataset.canScroll = String(canScroll);
+  carousel.querySelector(".activity-carousel-button--previous").disabled = !canScroll || track.scrollLeft <= 4;
+  carousel.querySelector(".activity-carousel-button--next").disabled =
+    !canScroll || track.scrollLeft + track.clientWidth >= track.scrollWidth - 4;
+}
+
+function preferredMotion() {
+  return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 /* -------------------------------------------------------------------------- */
