@@ -264,12 +264,11 @@ footer {
 }
 
 .news-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 22px;
+  display: block;
 }
 
-.news-grid article {
+.news-grid > article,
+.announcement-card {
   display: flex;
   min-height: 255px;
   padding: 27px 27px 25px;
@@ -277,11 +276,13 @@ footer {
   background: #e8ebe1;
 }
 
-.news-grid article:nth-child(2) {
+.news-grid > article:nth-child(2),
+.announcements-carousel .content-carousel-item:nth-child(3n + 2) .announcement-card {
   background: #dce7e2;
 }
 
-.news-grid article:nth-child(3) {
+.news-grid > article:nth-child(3),
+.announcements-carousel .content-carousel-item:nth-child(3n) .announcement-card {
   background: #f1e2d9;
 }
 
@@ -308,6 +309,110 @@ footer {
   margin-top: auto;
   padding-top: 14px;
   font-size: 12px;
+}
+
+/* Shared horizontal card carousels ---------------------------------------- */
+
+.content-carousel {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+  gap: 8px;
+  align-items: center;
+}
+
+.content-carousel-track {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(280px, 360px);
+  grid-template-rows: 1fr;
+  gap: 20px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  padding: 10px 12px 24px;
+  scroll-behavior: smooth;
+  scroll-padding-inline: 12px;
+  scroll-snap-type: x mandatory;
+  scrollbar-color: #90a19a transparent;
+  scrollbar-width: thin;
+}
+
+.content-carousel-track::-webkit-scrollbar {
+  height: 7px;
+}
+
+.content-carousel-track::-webkit-scrollbar-thumb {
+  background: #90a19a;
+  border-radius: 8px;
+}
+
+.content-carousel-item {
+  min-width: 0;
+  height: 100%;
+  scroll-snap-align: start;
+}
+
+.content-carousel-item > article {
+  height: 100%;
+  transition: box-shadow 180ms ease, transform 180ms ease;
+}
+
+.content-carousel-button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--ink);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  font: 400 22px / 1 Manrope, Arial, sans-serif;
+  transition: background 160ms ease, color 160ms ease, opacity 160ms ease;
+}
+
+.content-carousel-button:hover:not(:disabled),
+.content-carousel-button:focus-visible:not(:disabled) {
+  background: var(--ink);
+  color: #fff;
+}
+
+.content-carousel-button:disabled {
+  cursor: default;
+  opacity: 0.28;
+}
+
+.content-carousel[data-can-scroll="false"] .content-carousel-button {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .content-carousel-track {
+    scroll-behavior: auto;
+  }
+}
+
+.announcements-carousel .content-carousel-track {
+  grid-auto-columns: minmax(270px, 340px);
+}
+
+.past-members-carousel .content-carousel-track {
+  grid-auto-columns: minmax(220px, 275px);
+}
+
+.selected-papers-carousel .content-carousel-track {
+  grid-auto-columns: minmax(290px, 360px);
+}
+
+.conference-year-carousel .content-carousel-track {
+  grid-auto-columns: minmax(380px, 560px);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .content-carousel-item > article:hover {
+    box-shadow: 0 8px 18px #112c361a;
+    transform: translateY(-3px);
+  }
 }
 
 /* People ------------------------------------------------------------------ */
@@ -343,11 +448,23 @@ footer {
   background: #ede2d9;
 }
 
+.content-carousel-item:nth-child(4n + 2) .person .avatar {
+  background: #ede2d9;
+}
+
 .person:nth-child(4n + 3) .avatar {
   background: #e5e9cf;
 }
 
+.content-carousel-item:nth-child(4n + 3) .person .avatar {
+  background: #e5e9cf;
+}
+
 .person:nth-child(4n) .avatar {
+  background: #dbe6e2;
+}
+
+.content-carousel-item:nth-child(4n) .person .avatar {
   background: #dbe6e2;
 }
 
@@ -390,17 +507,45 @@ footer {
 
 .person-icon {
   display: grid;
-  width: 29px;
-  height: 29px;
+  width: 34px;
+  height: 34px;
   place-items: center;
   border: 1px solid var(--ink);
   border-radius: 50%;
+  color: var(--ink);
   transition: 0.18s;
 }
 
-.person-icon:hover {
+.person-icon:hover,
+.person-icon:focus-visible {
   background: var(--ink);
   color: var(--lime);
+}
+
+.person-icon:focus-visible {
+  outline: 2px solid var(--coral);
+  outline-offset: 3px;
+}
+
+.person-icon-svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.person-icon--email .person-icon-svg {
+  width: 19px;
+  height: 19px;
+}
+
+.person-icon-orcid {
+  font: 700 12px / 1 Manrope, Arial, sans-serif;
+  letter-spacing: -0.05em;
 }
 
 .person-bio {
@@ -415,6 +560,11 @@ footer {
   font: 500 10px "DM Mono", monospace;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+.person-bio summary:focus-visible {
+  outline: 2px solid var(--coral);
+  outline-offset: 3px;
 }
 
 .person-bio p {
@@ -445,6 +595,12 @@ footer {
   font: 700 24px "Playfair Display", serif;
 }
 
+.member-group summary:focus-visible,
+.conference-year summary:focus-visible {
+  outline: 2px solid var(--coral);
+  outline-offset: -4px;
+}
+
 .member-group summary::-webkit-details-marker,
 .conference-year summary::-webkit-details-marker {
   display: none;
@@ -470,8 +626,8 @@ footer {
   font: 500 11px "DM Mono", monospace;
 }
 
-.past-grid {
-  padding-bottom: 32px;
+.past-members-carousel {
+  padding-bottom: 12px;
 }
 
 .member-history {
@@ -557,14 +713,16 @@ footer {
 
 /* Publications ------------------------------------------------------------ */
 
-.highlighted-papers {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
+.selected-publications {
   margin-bottom: 65px;
 }
 
-.highlighted-papers article {
+.selected-publications > h2 {
+  margin: 8px 0 20px;
+  font-size: 34px;
+}
+
+.highlighted-paper-card {
   display: flex;
   min-height: 220px;
   padding: 25px;
@@ -573,11 +731,11 @@ footer {
   color: #fff;
 }
 
-.highlighted-papers article:nth-child(2) {
+.selected-papers-carousel .content-carousel-item:nth-child(3n + 2) .highlighted-paper-card {
   background: #526a69;
 }
 
-.highlighted-papers article:nth-child(3) {
+.selected-papers-carousel .content-carousel-item:nth-child(3n) .highlighted-paper-card {
   background: #8b8362;
 }
 
@@ -857,10 +1015,7 @@ footer {
   letter-spacing: -0.03em;
 }
 
-.conference-year-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 25px;
+.conference-year-carousel {
   padding-bottom: 34px;
 }
 
@@ -871,7 +1026,8 @@ footer {
   background: #e8ebe1;
 }
 
-.conference-card:nth-child(2n) {
+.conference-card:nth-child(2n),
+.conference-year-carousel .content-carousel-item:nth-child(2n) .conference-card {
   background: #f0e3da;
 }
 
@@ -889,7 +1045,8 @@ footer {
   text-align: center;
 }
 
-.conference-card:nth-child(2n) .conference-placeholder {
+.conference-card:nth-child(2n) .conference-placeholder,
+.conference-year-carousel .content-carousel-item:nth-child(2n) .conference-placeholder {
   background: #e9dfcd;
 }
 
@@ -1154,12 +1311,31 @@ footer {
     gap: 20px;
   }
 
-  .news-grid,
   .people-grid,
-  .research-cards,
-  .highlighted-papers,
-  .conference-year-grid {
+  .research-cards {
     grid-template-columns: 1fr;
+  }
+
+  .content-carousel {
+    grid-template-columns: 32px minmax(0, 1fr) 32px;
+    gap: 4px;
+  }
+
+  .content-carousel-track,
+  .announcements-carousel .content-carousel-track,
+  .past-members-carousel .content-carousel-track,
+  .selected-papers-carousel .content-carousel-track,
+  .conference-year-carousel .content-carousel-track {
+    grid-auto-columns: min(76vw, 340px);
+    gap: 14px;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .content-carousel-button {
+    width: 30px;
+    height: 30px;
+    font-size: 18px;
   }
 
   .research-media {
